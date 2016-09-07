@@ -28,6 +28,14 @@ namespace MarketResearch.Extension
                               tradeDate, preTradingDay, secondDayofPreTradingDay);
         }
 
+        /*
+         * 计算截止期限：
+         * date：当前日期
+         * preDate：前一天
+         * slices：交易时间片
+         * dir：期限计算方向
+         * deadlineTimeInMinutes：距离期限计算方向的时间长度
+         */
         public static DateTime CalcDeadline(DateTime date, DateTime preDate, List<TimeSliceEx> slices, DeadlineDir dir, double deadlineTimeInMinutes)
         {
             double minLeap = deadlineTimeInMinutes;
@@ -76,8 +84,8 @@ namespace MarketResearch.Extension
 
         public enum DeadlineDir
         {
-            ByEnd = 0,
-            ByBegin
+            ByEnd = 0, // 从最后的时间片开始计算
+            ByBegin // 从第一个时间片开始计算
         }
     }
 }

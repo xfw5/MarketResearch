@@ -8,6 +8,10 @@ using MarketResearch.Extension;
 
 namespace MarketResearch
 {
+    /*
+     * 日内跨商品对冲策略，基于黄金，白银1602开发：
+     * 1. 支持夜盘
+     */
     public class WatchAndBreakout: StrategyEx
     {
         #region Param

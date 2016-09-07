@@ -8,6 +8,9 @@ using MarketResearch.Extension;
 
 namespace MarketResearch.Extension
 {
+    /*
+     * 扩展MQ自带的策略类，以后所有自定义策略的开发均基于该扩展类来开发。
+     */
     public class StrategyEx : Strategy
     {
         [Parameter(Display="更新交易时间片段", Description = "是否实时更新交易时间片", Category = "更新")]
@@ -47,6 +50,7 @@ namespace MarketResearch.Extension
             return true;
         }
 
+        // 初始化驱动品种
         protected bool initTriggerFuture()
         {
             if (AllFutures == null || AllFutures.Count < 1) return false;
@@ -63,6 +67,7 @@ namespace MarketResearch.Extension
             return false;
         }
 
+        // 获取驱动品种所在交易所
         protected bool initTriggerExchange()
         {
             if (_triggerFuture == null) return false;
@@ -72,6 +77,7 @@ namespace MarketResearch.Extension
             return true;
         }
 
+        // 获取驱动品种的交易时间片， 并按照夜盘到日盘排序
         protected bool initTradeSlice()
         {
             _tradeSlices = SortInstrumentTradingTime(TriggerInstrument);
@@ -86,12 +92,14 @@ namespace MarketResearch.Extension
         #endregion
 
         #region Update
+        // 定时更新
         public void Update()
         {
             updateTradeSlice();
             updateTradeDay();
         }
 
+        // 更新当前时间，判断处于哪个交易时间片
         protected void updateTradeSlice()
         {
             _currentTradeSlice = null;
@@ -106,9 +114,11 @@ namespace MarketResearch.Extension
                 }
             }
 
+            // 是否处于交易休息时间
             _isTradeBreak = _currentTradeSlice == null;
         }
 
+        // 更新当前的盘类型，是夜盘还是白盘
         protected void updateTradeDay()
         {
             if (_currentTradeSlice != null)

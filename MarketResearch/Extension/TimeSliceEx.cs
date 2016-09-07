@@ -7,10 +7,13 @@ using Ats.Core;
 
 namespace MarketResearch.Extension
 {
+    /*
+     * 扩展MQ自带的TimeSlice，添加一个是否为夜盘日盘的属性。
+     */
     public class TimeSliceEx
     {
         private TimeSlice _slice;
-        private bool _isDayTrade = false;
+        private bool _isDayTrade = false; // 该时间片是否为日盘
 
         public bool IsDayTrade { get { return _isDayTrade; } }
         public TimeSlice Slice { get { return _slice; } }
@@ -54,6 +57,10 @@ namespace MarketResearch.Extension
             UpdateTradeType(dayTradeBegin, dayTradeEnd);
         }
 
+        /*
+         * dayTradeBegin：日盘开始时间
+         * dayTradeEnd：日盘结束时间
+         */
         public void UpdateTradeType(int dayTradeBegin, int dayTradeEnd)
         {
             double db = dayTradeBegin * 60 * 60;
