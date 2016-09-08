@@ -53,6 +53,7 @@
     <Compile Include="Extension\TimeSliceEx.cs" />
     <Compile Include="Extension\UtilsEx.cs" />
     <Compile Include="Hedge\Daily\WatchAndBreakout.cs" />
+    <Compile Include="Helper\StrategyExHelper.cs" />
     <Compile Include="Interface\IStateHandler.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Properties\Settings.Designer.cs">

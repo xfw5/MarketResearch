@@ -9,6 +9,8 @@ namespace MarketResearch.Extension
 {
     public class UtilsEx
     {
+        public static double OndayInSeconds = 24 * 60 * 60;
+
         public static bool IsHit(double input, double measure, double tolerance)
         {
             return Math.Abs(input - measure) < tolerance;

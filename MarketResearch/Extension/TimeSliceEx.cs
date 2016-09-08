@@ -74,6 +74,12 @@ namespace MarketResearch.Extension
                 _isDayTrade = true;
             }
         }
+
+        public override string ToString()
+        {
+            string dm = _isDayTrade? "日盘" : "夜盘";
+            return _slice.ToString() + " " + dm;
+        }
     }
 
     public class TimeSliceComparer : IComparer<TimeSliceEx>

@@ -1,0 +1,40 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using MarketResearch.Extension;
+
+namespace MarketResearch.Helper
+{
+    public class StrategyExHelper
+    {
+        public static void PrintRuntimeStatus(StrategyEx se)
+        {
+            se.Print("有夜盘: " + se.HasNightTrade.ToString() +
+                      " 当前盘: " + se.TradeType.ToString());
+
+            if (se.CurrentSlice == null) se.Print("休盘.");
+            else se.Print("当前交易时间片:" + se.CurrentSlice.ToString());
+        }
+
+        public static void PrintCurrentTimeSlice(StrategyEx se)
+        {
+            string msg = "休息";
+            if (se.CurrentSlice != null) msg = se.CurrentSlice.ToString();
+
+            se.Print("当前交易时间片:" + msg);
+        }
+
+        public static void PrintTradeType(StrategyEx se)
+        {
+            se.Print("当前盘:" + se.TradeType.ToString());
+        }
+
+        public static void PrintRunningDate(StrategyEx se)
+        {
+            se.Print("当前系统时间： " + se.Now.ToString());
+            se.Print("========>交易所时间" + se.CurrentTime);
+        }
+    }
+}

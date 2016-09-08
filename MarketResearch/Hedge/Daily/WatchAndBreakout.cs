@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Ats.Core;
 using MarketResearch.Extension;
+using MarketResearch.Helper;
 
 namespace MarketResearch
 {
@@ -81,11 +82,13 @@ namespace MarketResearch
             _instrumentA = AllFutures[0].ID;
             _instrumentB = AllFutures[1].ID;
 
-            PrintRunningDate();
+            StrategyExHelper.PrintRunningDate(this);
 
             setupDeadline();
 
             _runningState = RunningState.DurationWatch;
+
+            onInitDone();
         }
 
         private void setupDeadline()
@@ -105,29 +108,31 @@ namespace MarketResearch
 
         public override void OnTick(Tick tick)
         {
-            Print("--->" + tick.TimeNow.ToString());
-            Print(tick.DateTime.ToString());
-        }
+            if (UpdateStatusType == E_UpdateType.InTick) Update(this);
 
+            _stateHandler[(int)_runningState].Handler(this);
+        }
 
         public override void OnBar(Bar bar)
         {
+            if (UpdateStatusType == E_UpdateType.InBar) Update(this);
+
             _stateHandler[(int)_runningState].Handler(this);
         }
 
         private static void onActionInitFailed(WatchAndBreakout st)
         {
-            st.Print("Future's count must be 2. Please check and try it again!");
+            st.Print("对冲必须设置2支期货品种!");
         }
 
         private static void OnActionWatchDuration(WatchAndBreakout st)
         {
-            st.PrintRunningDate();
+            
         }
 
         private static void OnActionStopRunning(WatchAndBreakout st)
         {
-            st.Print("Stop running strategy require received, exit now...");
+            st.Print("策略停止运行!");
             st.Exit();
         }
 
