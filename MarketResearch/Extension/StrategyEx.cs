@@ -51,6 +51,7 @@ namespace MarketResearch.Extension
         public TimeSliceEx LastTradeSlice { get { return _tradeSlices[_tradeSlices.Count - 1]; } }
 
         #region Init
+        // 策略内部初始化
         public virtual bool CustomInit()
         {
             if (!initTriggerFuture() || 
@@ -61,6 +62,7 @@ namespace MarketResearch.Extension
             return true;
         }
 
+        // 策略初始化完成，准备就绪
         protected virtual void onInitDone()
         {
             if (UpdateStatusType == E_UpdateType.AsTimer)
@@ -127,7 +129,7 @@ namespace MarketResearch.Extension
         #endregion
 
         #region Update
-        // 定时更新
+        // 更新策略状态
         public void Update(object state)
         {
             StrategyExHelper.PrintRunningDate(this);
@@ -246,17 +248,19 @@ namespace MarketResearch.Extension
             }
         }
 
+        // 盘类型
         public enum E_TradeType
         {
-            OnNight = 0,
-            OnDay
+            OnNight = 0, // 夜盘
+            OnDay // 日盘
         }
 
+        // 更新系统状态的方式
         public enum E_UpdateType
         {
-            AsTimer = 0,
-            InTick,
-            InBar
+            AsTimer = 0, // 以定时器的方式
+            InTick, // 在tick事件中
+            InBar // 在bar（k线）事件中
         }
     }
 }

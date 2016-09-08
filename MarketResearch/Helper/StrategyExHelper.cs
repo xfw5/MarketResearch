@@ -7,6 +7,7 @@ using MarketResearch.Extension;
 
 namespace MarketResearch.Helper
 {
+    // 策略助手类，就是专门干一些琐碎的事情，好比助理.
     public class StrategyExHelper
     {
         public static void PrintRuntimeStatus(StrategyEx se)

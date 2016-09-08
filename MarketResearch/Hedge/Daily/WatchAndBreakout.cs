@@ -54,24 +54,31 @@ namespace MarketResearch
         #endregion
 
         #region Field
-        private string _instrumentA;
-        private string _instrumentB;
+        private string _instrumentA; // 对应第一个期货品种
+        private string _instrumentB; // 对应第二个期货品种
 
+        // 状态机
         private RunningState _runningState = RunningState.InitFailed;
+
+        // 定义状态机的处理函数
         private static StgStateMechine[] _stateHandler = new[] 
         {
             new StgStateMechine(RunningState.InitFailed, onActionInitFailed),
             new StgStateMechine(RunningState.DurationWatch, OnActionWatchDuration), 
+            new StgStateMechine(RunningState.Stop, OnActionStopRunning),
         };
 
+        // 截止期限
         private DateTime _deadlineWatching;
         private DateTime _deadlineStopRunning;
         private DateTime _deadlineUnconditionLiquidate;
         private DateTime _deadlineTryLiquidate;
         #endregion
 
+        #region Init & Setup
         public override void Init()
         {
+            // 策略内部初始化，必须先与其他内容初始化
             if (!CustomInit()) return;
 
             if (AllFutures.Count != 2)
@@ -88,9 +95,11 @@ namespace MarketResearch
 
             _runningState = RunningState.DurationWatch;
 
+            // 策略初始化完成，准备就绪。
             onInitDone();
         }
 
+        // 根据配置的参数来设置策略截止期限
         private void setupDeadline()
         {
             DateTime preDay = TradingDayHelper.GetPreTradingDay(TradingDate);
@@ -104,8 +113,9 @@ namespace MarketResearch
             Print("截止时间->无条件平仓: " + _deadlineUnconditionLiquidate);
             Print("截止时间->尝试平仓: " + _deadlineTryLiquidate);
         }
+        #endregion
 
-
+        #region Build-in event
         public override void OnTick(Tick tick)
         {
             if (UpdateStatusType == E_UpdateType.InTick) Update(this);
@@ -119,7 +129,9 @@ namespace MarketResearch
 
             _stateHandler[(int)_runningState].Handler(this);
         }
+        #endregion
 
+        #region Mechine state handler
         private static void onActionInitFailed(WatchAndBreakout st)
         {
             st.Print("对冲必须设置2支期货品种!");
@@ -135,20 +147,24 @@ namespace MarketResearch
             st.Print("策略停止运行!");
             st.Exit();
         }
+        #endregion
 
+        #region Mechine state defines
+        // 状态
         public enum RunningState
         {
-            InitFailed = 0,
-            DurationWatch,
-            Stop,
+            InitFailed = 0, // 策略初始化失败
+            DurationWatch, // 策略观察期间
+            Stop, // 策略停止运行
         }
 
+        // 自定义的策略状态机
         public class StgStateMechine
         {
             public delegate void OnStateHandlerFunc(WatchAndBreakout stg);
 
             public RunningState State;
-            public OnStateHandlerFunc Handler;
+            public OnStateHandlerFunc Handler; //策略处理入口函数.
 
             public StgStateMechine(RunningState state, OnStateHandlerFunc handler)
             {
@@ -156,5 +172,6 @@ namespace MarketResearch
                 this.Handler = handler;
             }
         }
+        #endregion
     }
 }
