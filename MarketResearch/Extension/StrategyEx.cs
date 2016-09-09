@@ -12,7 +12,7 @@ namespace MarketResearch.Extension
     /*
      * 扩展MQ自带的策略类，以后所有自定义策略的开发均基于该扩展类来开发。
      */
-    public class StrategyEx : Strategy
+    public abstract class StrategyEx : Strategy
     {
         [Parameter(Display="更新交易时间片段", Description = "是否实时更新交易时间片", Category = "更新")]
         public bool EnableUpdateSlice;
@@ -51,8 +51,19 @@ namespace MarketResearch.Extension
         public TimeSliceEx LastTradeSlice { get { return _tradeSlices[_tradeSlices.Count - 1]; } }
 
         #region Init
+        public override void Init()
+        {
+            coreInit();
+
+            onCustomInit(); // 策略自定义初始化入口
+
+            onInitDone();
+        }
+
+        public abstract void onCustomInit(); // 抽象函数，每个自定义的策略都必须实现该函数，来完成策略的自定义初始化
+
         // 策略内部初始化
-        public virtual bool CustomInit()
+        private bool coreInit()
         {
             if (!initTriggerFuture() || 
                 !initTriggerExchange() || 

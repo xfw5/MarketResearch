@@ -4,12 +4,18 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using MarketResearch.Extension;
+using Ats.Core;
 
 namespace MarketResearch.Helper
 {
     // 策略助手类，就是专门干一些琐碎的事情，好比助理.
     public class StrategyExHelper
     {
+        public static double Change(Tick tick)
+        {
+            return (tick.LastPrice - tick.PreClosePrice) / tick.PreClosePrice * 100;
+        }
+
         public static void PrintRuntimeStatus(StrategyEx se)
         {
             se.Print("有夜盘: " + se.HasNightTrade.ToString() +
