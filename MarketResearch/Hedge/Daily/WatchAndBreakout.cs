@@ -63,33 +63,40 @@ namespace MarketResearch
         #region Cache
         private Future _futureA;
         private Future _futureB;
-        private Order _orderA;
-        private Order _orderB;
         private Trade _tradeA;
         private Trade _tradeB;
         private Tick _tickA;
         private Tick _tickB;
+        private HedgeOrderTracer _orderStatusTracerA;
+        private HedgeOrderTracer _orderStatusTracerB;
         #endregion
 
         // 状态机
-        private ERunningState _runningState = ERunningState.InitFailed;
+        private ERunningState _runningState = ERunningState.Init;
 
         // 定义状态机的处理函数
         private static StgStateMechine[] _stateHandler = new[] 
         {
+            new StgStateMechine(ERunningState.Init, onActionInit),
             new StgStateMechine(ERunningState.InitFailed, onActionInitFailed),
             new StgStateMechine(ERunningState.DurationWatch, onActionWatchDuration), 
-            new StgStateMechine(ERunningState.RealTimeExchange, onActionRealTimeEchange),
+            new StgStateMechine(ERunningState.RealTimeExchange, onActionRealTimeExchange),
             new StgStateMechine(ERunningState.TryLiquidate, onTryLiquidate), 
             new StgStateMechine(ERunningState.UnconditionLiquidate, onUnconditionLiquidate), 
-            new StgStateMechine(ERunningState.Stop, onActionStopRunning),
+            new StgStateMechine(ERunningState.Stop, onStopRunning),
         };
 
         // 截止期限
         private DateTime _deadlineWatching;
-        private DateTime _deadlineStopRunning;
+        private DateTime _deadlineStopRunningIfPositionEmpty;
         private DateTime _deadlineUnconditionLiquidate;
         private DateTime _deadlineTryLiquidate;
+
+        // 定时器
+        private DeadlineTimer _timerWatching;
+        private DeadlineTimer _timerStopRunning;
+        private DeadlineTimer _timerUnconditionLiquidate;
+        private DeadlineTimer _timerTryLiquidate;
 
         // 计数器
         private long _countOfChangeInWatchingDuration;
@@ -99,9 +106,12 @@ namespace MarketResearch
         // 阀值
         private double _thresholdChangePercentage;
 
-        // 仓位状态
-        private bool _isPositionEmpty = true;
-        private bool _hasStop = false;
+        private bool _hasStop = false; // 策略是否已经停止运行
+        #endregion
+
+        #region Property
+        // 仓位是否为空
+        public bool IsPositionEmpty { get { return _orderStatusTracerA.IsPositionEmpty && _orderStatusTracerB.IsPositionEmpty; } }
         #endregion
 
         #region Init & Setup
@@ -109,7 +119,7 @@ namespace MarketResearch
         {
             if (AllFutures.Count != 2)
             {
-                _runningState = ERunningState.InitFailed;
+                SwitchRunningState(ERunningState.InitFailed);
             }
 
             _futureA = AllFutures[0];
@@ -120,8 +130,9 @@ namespace MarketResearch
             StrategyExHelper.PrintRunningDate(this);
 
             setupDeadline();
+            setupHedgeStatusTracer();
 
-            _runningState = ERunningState.DurationWatch;
+            SwitchRunningState(ERunningState.DurationWatch);
         }
 
         // 根据配置的参数来设置策略截止期限
@@ -129,14 +140,30 @@ namespace MarketResearch
         {
             DateTime preDay = TradingDayHelper.GetPreTradingDay(TradingDate);
             _deadlineWatching = UtilsEx.CalcDeadline(TradingDate, preDay, _tradeSlices, UtilsEx.DeadlineDir.ByBegin, DurationWatchChangeInHours * 60);
-            _deadlineStopRunning = UtilsEx.CalcDeadline(TradingDate, preDay, _tradeSlices, UtilsEx.DeadlineDir.ByEnd, DurationTerminalRunningIfPositionEmptyInHours * 60);
+            _deadlineStopRunningIfPositionEmpty = UtilsEx.CalcDeadline(TradingDate, preDay, _tradeSlices, UtilsEx.DeadlineDir.ByEnd, DurationTerminalRunningIfPositionEmptyInHours * 60);
             _deadlineUnconditionLiquidate = UtilsEx.CalcDeadline(TradingDate, preDay, _tradeSlices, UtilsEx.DeadlineDir.ByEnd, DurationUnconditionLiquidateInMinutes);
             _deadlineTryLiquidate = UtilsEx.CalcDeadline(TradingDate, preDay, _tradeSlices, UtilsEx.DeadlineDir.ByEnd, DurationTryLiquidateInHours * 60);
 
+            _timerWatching = new DeadlineTimer(_deadlineWatching, onDeadlineWatchingTicking, onDeadlineWatchingHit);
+            _timerStopRunning = new DeadlineTimer(_deadlineStopRunningIfPositionEmpty, null, onDeadlineStopRunningHit);
+            _timerTryLiquidate = new DeadlineTimer(_deadlineTryLiquidate, null, onDeadlineTryLiquidateHit);
+            _timerUnconditionLiquidate = new DeadlineTimer(_deadlineUnconditionLiquidate, null, onDeadlineUnconditionLiquidateHit);
+
             Print("截止时间->观察: " + _deadlineWatching);
-            Print("截止时间->平仓停止策略运行: " + _deadlineStopRunning);
-            Print("截止时间->无条件平仓: " + _deadlineUnconditionLiquidate);
-            Print("截止时间->尝试平仓: " + _deadlineTryLiquidate);
+            Print("截止时间->平仓停止策略运行如果距离收盘时间小于" + DurationTerminalRunningIfPositionEmptyInHours + ": " + _deadlineStopRunningIfPositionEmpty);
+            Print("截止时间->无条件平仓如果距离收盘时间小于" + DurationUnconditionLiquidateInMinutes + ": " + _deadlineUnconditionLiquidate);
+            Print("截止时间->尝试平仓如果距离收盘时间小于" + DurationTryLiquidateInHours + ": " + _deadlineTryLiquidate);
+        }
+
+        // 初始化对冲状态跟踪器
+        private void setupHedgeStatusTracer()
+        {
+            _orderStatusTracerA = new HedgeOrderTracer(this, _futureA, HandsOfA * LeverageA);
+            _orderStatusTracerB = new HedgeOrderTracer(this, _futureB, HandsOfB * LeverageB);
+
+            // 注册订单状态变化的回调事件
+            _onOrderStatusChange += _orderStatusTracerA.OnOrderStatusChange;
+            _onOrderStatusChange += _orderStatusTracerB.OnOrderStatusChange;
         }
         #endregion
 
@@ -172,9 +199,10 @@ namespace MarketResearch
             if (_tradeA != null && _tradeA.OpenOrClose == EnumOpenClose.平仓 && 
                 _tradeB != null && _tradeB.OpenOrClose == EnumOpenClose.平仓)
             {
-                _isPositionEmpty = true;
                 _tradeA = _tradeB = null;
             }
+
+            if (PrintPositionStatusOnTradeDeal) StrategyExHelper.PrintPositionStatus(this);
         }
 
         public override void OnOrderRejected(Order order)
@@ -260,35 +288,75 @@ namespace MarketResearch
         {
             if (deltaChange < 0) // DA < DB
             {
-                _orderA = SendOrderEx(_futureA, _tickA.BidPrice1, HandsOfA * LeverageA, EnumBuySell.买入, EnumOpenClose.开仓); // 空
-                _orderB = SendOrderEx(_futureB, _tickB.AskPrice1, HandsOfB * LeverageB, EnumBuySell.卖出, EnumOpenClose.开仓); // 多
+                _orderStatusTracerA.OpenPosition(MarketOrderType.Bear, _tickA.LastPrice, OrderPriceDiff);
+                _orderStatusTracerB.OpenPosition(MarketOrderType.Bull, _tickB.LastPrice, OrderPriceDiff);
             }
             else
             {
-                _orderA = SendOrderEx(_futureA, _tickA.BidPrice1, HandsOfA * LeverageA, EnumBuySell.卖出, EnumOpenClose.开仓); // 多
-                _orderB = SendOrderEx(_futureB, _tickB.AskPrice1, HandsOfB * LeverageB, EnumBuySell.买入, EnumOpenClose.开仓); // 空
+                _orderStatusTracerA.OpenPosition(MarketOrderType.Bull, _tickA.LastPrice, OrderPriceDiff);
+                _orderStatusTracerB.OpenPosition(MarketOrderType.Bear, _tickB.LastPrice, OrderPriceDiff);
             }
-
-            _isPositionEmpty = false;
         }
 
         private void onLiquidatePosition()
         {
-            if (_orderA != null)
+            _orderStatusTracerA.ClosePosition(_tickA.LastPrice, OrderPriceDiff);
+            _orderStatusTracerB.ClosePosition(_tickB.LastPrice, OrderPriceDiff);
+        }
+        #endregion
+
+        #region Timer handler
+        private void onDeadlineWatchingHit(object evt)
+        {
+            calcWatchingResult();
+
+            SwitchRunningState(ERunningState.RealTimeExchange);
+        }
+
+        private void onDeadlineWatchingTicking(object evt)
+        {
+            // 如果是tick驱动，算计该次的涨幅差，增加触发计时器。
+            Tick tick = evt as Tick;
+            if (tick != null)
             {
-                if (_orderA.Direction == EnumBuySell.买入) SendOrderEx(_futureA, _tickA.BidPrice1, HandsOfA * LeverageA, EnumBuySell.卖出, EnumOpenClose.平仓);
-                else if (_orderA.Direction == EnumBuySell.卖出) SendOrderEx(_futureA, _tickA.AskPrice1, HandsOfA * LeverageA, EnumBuySell.买入, EnumOpenClose.平仓);
+                _countOfChangeInWatchingDuration++;
+                _totalChangePercentage += Math.Abs(getChangePercentage(true));
+                return;
+            }
+        }
+
+        private void onDeadlineTryLiquidateHit(object evt)
+        {
+            if (!IsPositionEmpty)
+            {
+                SwitchRunningState(ERunningState.TryLiquidate);
+                return;
             }
 
-            if (_orderB != null)
+            Print("尝试平仓， 但仓位为空！！！！！！！");
+        }
+
+
+        private void onDeadlineStopRunningHit(object evt)
+        {
+            if (IsPositionEmpty)
             {
-                if (_orderB.Direction == EnumBuySell.买入) SendOrderEx(_futureB, _tickB.BidPrice1, HandsOfB * LeverageB, EnumBuySell.卖出, EnumOpenClose.平仓);
-                else if (_orderB.Direction == EnumBuySell.卖出) SendOrderEx(_futureB, _tickB.AskPrice1, HandsOfB * LeverageB, EnumBuySell.买入, EnumOpenClose.平仓);
+                stopRunning();
             }
+        }
+
+        private void onDeadlineUnconditionLiquidateHit(object evt)
+        {
+            SwitchRunningState(ERunningState.UnconditionLiquidate);
         }
         #endregion
 
         #region Mechine state handler
+        private static void onActionInit(WatchAndBreakout st, object customData)
+        {
+            st.onCustomInit();
+        }
+
         private static void onActionInitFailed(WatchAndBreakout st, object customData)
         {
             st.Print("对冲必须设置2支期货品种!");
@@ -296,67 +364,105 @@ namespace MarketResearch
 
         private static void onActionWatchDuration(WatchAndBreakout st, object customData)
         {
-            // 如果观察结束，计算观察期间的涨幅差，切换状态机，进入实时交易阶段。
-            if (st.isDeadlineHit(st._deadlineWatching))
-            {
-                st.calcWatchingResult();
-
-                st._runningState = ERunningState.RealTimeExchange;
-                return;
-            }
-
-            // 如果是tick驱动，算计该次的涨幅差，增加触发计时器。
-            Tick tick = customData as Tick;
-            if (tick != null)
-            {
-                st._countOfChangeInWatchingDuration++;
-                st._totalChangePercentage += Math.Abs(st.getChangePercentage(true));
-                return;
-            }
+            st._timerWatching.Update(st.CurrentTime, customData);
         }
 
-        private static void onActionRealTimeEchange(WatchAndBreakout st, object customData)
+        private static void onActionRealTimeExchange(WatchAndBreakout st, object customData)
+        {
+            st.onRealtimeExchange(customData);
+
+            st._timerStopRunning.Update(st.CurrentTime, customData);
+            st._timerTryLiquidate.Update(st.CurrentTime, customData);
+        }
+
+        private static void onTryLiquidate(WatchAndBreakout st, object customData)
+        {
+            if (st.isProfitCoverCost())
+            {
+                st.SwitchRunningState(ERunningState.Stop);
+                return;
+            }
+
+            st._timerUnconditionLiquidate.Update(st.CurrentTime, customData);
+        }
+
+        private static void onUnconditionLiquidate(WatchAndBreakout st, object customData)
+        {
+            st.onLiquidatePosition();
+
+            st.SwitchRunningState(ERunningState.Stop);
+        }
+
+        private static void onStopRunning(WatchAndBreakout st, object customData)
+        {
+            st.stopRunning();
+        }
+
+        private void onRealtimeExchange(object customData)
         {
             Tick tick = customData as Tick;
             if (tick != null)
             {
-                st._tickA = st.LastFutureTick(st._instrumentA);
-                st._tickB = st.LastFutureTick(st._instrumentB);
-                double deltaChange = st.getChangePercentage(true);
+                _tickA = LastFutureTick(_instrumentA);
+                _tickB = LastFutureTick(_instrumentB);
+                double deltaChange = getChangePercentage(true);
                 double deltaChangeAbs = Math.Abs(deltaChange);
 
-                if (st._isPositionEmpty)
+                if (IsPositionEmpty)
                 {
-                    if (deltaChangeAbs > st._thresholdChangePercentage)
+                    if (deltaChangeAbs > _thresholdChangePercentage)
                     {
-                        st.onOpenPosition(deltaChange);
+                        onOpenPosition(deltaChange);
                     }
-                }else
+                }
+                else
                 {
-                    if (deltaChangeAbs < st.LiquidateChangePercentage)
+                    if (deltaChangeAbs < LiquidateChangePercentage)
                     {
-                        st.onLiquidatePosition();
+                        onLiquidatePosition();
                     }
                 }
             }
         }
 
-        private static void onTryLiquidate(WatchAndBreakout st, object customData)
+        private bool isProfitCoverCost()
         {
+            if (_orderStatusTracerA.Order == null || _orderStatusTracerB.Order == null) return true;
 
+            double totalProfit = 0;
+            PositionSeries ps = GetPosition(EnumMarket.期货, DefaultAccount);
+            foreach(Position position in ps)
+            {
+                totalProfit += position.PositionProfit;
+            }
+
+            return totalProfit > 0;
         }
 
-        private static void onUnconditionLiquidate(WatchAndBreakout st, object customData)
+        private void stopRunning()
         {
+            if (_hasStop) return;
 
+            if (_runningState != ERunningState.Stop) SwitchRunningState(ERunningState.Stop);
+
+            _hasStop = true;
         }
 
-        private static void onActionStopRunning(WatchAndBreakout st, object customData)
+        public override void Exit()
         {
-            if (st._hasStop) return;
+            Print("策略停止运行!" + CurrentTime);
+            _orderStatusTracerA.PrintHitStatus();
+            _orderStatusTracerB.PrintHitStatus();
 
-            st.Print("策略停止运行!");
-            st.Exit();
+            Order[] ods = new Order[]{_orderStatusTracerA.Order, _orderStatusTracerB.Order};
+            StrategyExHelper.PrintPositionStatus(this, ods, true);
+        }
+
+        private void SwitchRunningState(ERunningState newState)
+        {
+            Print("===>>>>切换状态机:" + _RStranslater[(int)_runningState].Name + "---->" + _RStranslater[(int)newState].Name);
+
+            _runningState = newState;
         }
         #endregion
 
@@ -364,13 +470,37 @@ namespace MarketResearch
         // 状态
         public enum ERunningState
         {
-            InitFailed = 0, // 策略初始化失败
+            Init = 0,
+            InitFailed, // 策略初始化失败
             DurationWatch, // 策略观察期间
             RealTimeExchange, // 观察结束，开始实时交易
             TryLiquidate,
             UnconditionLiquidate,
             Stop, // 策略停止运行
         }
+
+        public class RunningStateTranslater
+        {
+            public ERunningState State;
+            public string Name;
+
+            public RunningStateTranslater(ERunningState state, string name)
+            {
+                State = state;
+                Name = name;
+            }
+        }
+
+        private static RunningStateTranslater[] _RStranslater = 
+        {
+            new RunningStateTranslater(ERunningState.Init, "策略初始化"),
+            new RunningStateTranslater(ERunningState.InitFailed, "初始化失败"),
+            new RunningStateTranslater(ERunningState.DurationWatch, "观察区间"),
+            new RunningStateTranslater(ERunningState.RealTimeExchange, "实时交易"),
+            new RunningStateTranslater(ERunningState.TryLiquidate, "尝试平仓"),
+            new RunningStateTranslater(ERunningState.UnconditionLiquidate, "无条件平仓"),
+            new RunningStateTranslater(ERunningState.Stop, "停止运行")
+        };
 
         // 自定义的策略状态机
         public class StgStateMechine

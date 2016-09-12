@@ -14,6 +14,10 @@ namespace MarketResearch.Extension
      */
     public abstract class StrategyEx : Strategy
     {
+        #region Param
+        [Parameter(Display = "打印仓位状态当成交回报时", Description = "是否打印仓位状态，当上报的交易成功回报时", Category = "调试")]
+        public bool PrintPositionStatusOnTradeDeal = false;
+
         [Parameter(Display="更新交易时间片段", Description = "是否实时更新交易时间片", Category = "更新")]
         public bool EnableUpdateSlice;
 
@@ -32,6 +36,11 @@ namespace MarketResearch.Extension
         [Parameter(Display = "日盘交易结束时间(24小时)", Description = "日盘交易结束的时间， 一般与交易所的时间后移1小时", Category = "系统")]
         public int DayTradeEnd = 16; // 15 + 1
 
+        [Parameter(Display = "买卖价差", Description = "买入或卖出时，与当前市价的价差。单位为最小交易单元", Category = "交易")]
+        public int OrderPriceDiff = 5;
+        #endregion
+
+        #region Field
         protected bool _isTradeBreak = false; // 是否处于交易休息时间
         protected bool _hasNightTrade = false; //是否有夜盘
         protected E_TradeType _tradeType = E_TradeType.OnDay;
@@ -43,12 +52,19 @@ namespace MarketResearch.Extension
         protected Future _triggerFuture = null; //驱动品种
         protected Exchange _triggerExchange = null; //驱动品种所在的交易所
 
+        public delegate void onOrderStatusChangeDelegate(Order order);
+        protected onOrderStatusChangeDelegate _onOrderStatusChange; 
+        #endregion
+
+        #region property
         public bool IsTradeBreak { get { return _isTradeBreak; } }
         public bool HasNightTrade { get { return _hasNightTrade; } }
         public E_TradeType TradeType { get { return _tradeType; } }
         public DateTime CurrentTime { get { return _triggerExchange.TimeNow; } }
         public TimeSliceEx CurrentSlice { get { return _currentTradeSlice; } }
         public TimeSliceEx LastTradeSlice { get { return _tradeSlices[_tradeSlices.Count - 1]; } }
+        public Future TriggerFuture { get { return _triggerFuture; } }
+        #endregion
 
         #region Init
         public override void Init()
@@ -200,6 +216,13 @@ namespace MarketResearch.Extension
         }
         #endregion
 
+        #region Order Status
+        public override void OnOrder(Order order)
+        {
+            if (_onOrderStatusChange != null) _onOrderStatusChange(order);
+        }
+        #endregion
+
         #region Misc
         /* 对交易时间进行排序，结果为：夜盘->白盘
          * 21:0:0 - 23:0:0
@@ -214,6 +237,16 @@ namespace MarketResearch.Extension
             List<TimeSliceEx> tse = TimeSliceEx.CreateSlices(slices, DayTradeBegin, DayTradeEnd);
             tse.Sort(new TimeSliceComparer());
             return tse;
+        }
+
+        public double GetSelloutPrice(double lastPrice, double priceTick)
+        {
+            return lastPrice - priceTick * OrderPriceDiff;
+        }
+
+        public double GetBuyInPrice(double lastPrice, double priceTick)
+        {
+            return lastPrice + priceTick * OrderPriceDiff;
         }
         #endregion
 

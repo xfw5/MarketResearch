@@ -16,6 +16,38 @@ namespace MarketResearch.Helper
             return (tick.LastPrice - tick.PreClosePrice) / tick.PreClosePrice * 100;
         }
 
+        public static void PrintPositionStatus(StrategyEx se, Order[] orders = null, bool checkStatusIfPositionNotEmpty = false)
+        {
+            PositionSeries ps = se.GetPosition(se.TriggerFuture.Market, se.DefaultAccount);
+
+            se.Print("打印当前仓位信息：");
+
+            if (ps == null || ps.Count == 0)
+            {
+                se.Print("空仓");
+                return;
+            }
+
+            foreach(Position pos in ps)
+            {
+                se.Print(pos.ToString());
+
+                if (pos.TodayPosition != 0 && orders != null && checkStatusIfPositionNotEmpty)
+                {
+                    se.Print("警告：当前仓位不为空！！！！");
+                    foreach(Order order in orders)
+                    {
+                        if (order.InstrumentID.Equals(pos.InstrumentID))
+                        {
+                            OrderHelper.PrintOrderStatus(se, order);
+                            se.Print("最新tick数据：" + se.LastFutureTick(order.InstrumentID).ToString());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         public static void PrintRuntimeStatus(StrategyEx se)
         {
             se.Print("有夜盘: " + se.HasNightTrade.ToString() +

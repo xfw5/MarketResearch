@@ -49,6 +49,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Extension\DeadlineTimer.cs" />
+    <Compile Include="Extension\HedgeOrderTracer.cs" />
     <Compile Include="Extension\StrategyEx.cs" />
     <Compile Include="Extension\TimeSliceEx.cs" />
     <Compile Include="Extension\UtilsEx.cs" />

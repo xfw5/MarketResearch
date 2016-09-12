@@ -16,7 +16,7 @@ namespace MarketResearch.Helper
 
         public static void PrintOrderStatus(Strategy st, Order order)
         {
-            st.Print(order.ToString());
+            st.Print("订单状态:" + order.ToString());
         }
     }
 }
